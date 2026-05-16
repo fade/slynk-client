@@ -409,20 +409,35 @@ Signals SLIME-NETWORK-ERROR when there are network problems."
 
 (defun slime-dispatch-events (connection connection-closed-hook)
   "Reads and dispatches incoming events for a CONNECTION to a Slynk server.  If
-provided, function CONNECTION-CLOSED-HOOK is called when CONNECTION is closed."
+provided, function CONNECTION-CLOSED-HOOK is called when CONNECTION is closed.
+
+Errors raised by `slime-net-read' or `slime-dispatch-event' for a single
+inbound message are caught and reported via `warn'; the dispatcher then
+continues with the next message.  Without this, any unreadable wire
+payload -- for example a `:new-features' broadcast from the remote Lisp
+that names a package the local image has not loaded
+(`cl-postgres.features:sbcl-ipv6-available' from a postgres-aware
+image into a postgres-free client) -- would propagate the
+`package-does-not-exist' reader error out of the dispatcher thread.
+Under SBCL's `--disable-debugger' that exits the entire process from a
+non-main thread."
   (flet ((close-connection ()
 	   (bordeaux-threads:with-lock-held ((connection-lock connection))
 	     (usocket:socket-close (usocket connection))
 	     (setf (state connection) :dead))
 	   (remove-open-connection connection)
 	   (when connection-closed-hook (funcall connection-closed-hook))))
-    (loop (let ((event (slime-net-read connection)))
-	    (unless event
-	      (close-connection)
-	      (return-from slime-dispatch-events))
-	    ;; TODO(brown): Verify that this call to SLIME-DISPATCH-EVENTS will never signal
-	    ;; SLIME-NETWORK-ERROR.
-	    (slime-dispatch-event event connection))
+    (loop (handler-case
+              (let ((event (slime-net-read connection)))
+                (unless event
+                  (close-connection)
+                  (return-from slime-dispatch-events))
+                ;; TODO(brown): Verify that this call to SLIME-DISPATCH-EVENTS will never signal
+                ;; SLIME-NETWORK-ERROR.
+                (slime-dispatch-event event connection))
+            (error (condition)
+              (warn "slynk-client dispatcher skipped a message: ~A"
+                    condition)))
 	  (let ((state nil))
 	    (bordeaux-threads:with-lock-held ((connection-lock connection))
 	      (setf state (state connection)))
