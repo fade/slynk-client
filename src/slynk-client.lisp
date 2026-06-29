@@ -473,6 +473,15 @@ closed."
   (slime-eval-async nil connection)
   (values))
 
+(defun slime-interrupt (connection &optional (thread t))
+  "Sends an out-of-band interrupt to the Slynk server on CONNECTION, the
+headless equivalent of SLIME's C-c C-a cooperative abort.  THREAD selects the
+target thread; T (the default) targets the most-recently-dispatched eval
+thread via Slynk's :find-existing routing.  Used by the attached-cancel path.
+Signals SLIME-NETWORK-ERROR if there are communications problems."
+  (slime-send (list :emacs-interrupt thread) connection)
+  (values))
+
 (defmacro with-slime-connection ((variable host-name port &optional connection-closed-hook)
                                  &body body)
   "Wraps BODY in a LET form where VARIABLE is bound to the value returned by

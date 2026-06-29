@@ -6,6 +6,7 @@
   (:export #:slynk-connection
            #:slime-connect
            #:slime-close
+           #:slime-interrupt
            #:slime-eval
            #:slime-eval-async
            #:slime-migrate-evals
